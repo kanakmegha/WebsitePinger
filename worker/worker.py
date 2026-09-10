@@ -9,7 +9,7 @@ from worker.monitor.domain import check_domain
 from worker.alerts.email import send_alert
 
 API = "http://localhost:8000/api/sites"
-CHECK_INTERVAL = 900
+CHECK_INTERVAL = 900   # ✅ 15 minutes
 MAX_WORKERS = 10
 
 
@@ -17,13 +17,23 @@ def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 
+# -------------------------------
+# SEND LOG TO BACKEND
+# -------------------------------
 def send_log(site_id, data):
     try:
-        requests.post(f"{API}/{site_id}/logs", json=data, timeout=5)
+        requests.post(
+            f"{API}/{site_id}/logs",
+            json=data,
+            timeout=5
+        )
     except Exception as e:
         log(f"❌ Log send failed: {e}")
 
 
+# -------------------------------
+# PROCESS SINGLE SITE
+# -------------------------------
 def process_site(site):
     site_id = site["id"]
     url = site["url"]
@@ -40,16 +50,19 @@ def process_site(site):
     try:
         log(f"🌐 Checking: {url}")
 
+        # ---------------- HTTP CHECK ----------------
         http = check_http(url)
         result["status"] = http["status"]
         result["response_time"] = http["response_time"]
 
+        # ---------------- SSL + DOMAIN ----------------
         ssl_days = check_ssl(url)
         domain_days = check_domain(url)
 
         result["ssl_days"] = ssl_days
         result["domain_days"] = domain_days
 
+        # ---------------- LOG MESSAGE ----------------
         log_message = f"""
 STATUS: {result['status']}
 RESPONSE: {result['response_time']} ms
@@ -57,17 +70,21 @@ SSL: {ssl_days} days
 DOMAIN: {domain_days} days
 """
 
-        # ALERTS
-        if result["status"] == "DOWN":
-            send_alert(f"{url} DOWN")
+        # ---------------- ALERTS ----------------
+        try:
+            if result["status"] == "DOWN":
+                send_alert(f"{url} DOWN")
 
-        if ssl_days != -1 and ssl_days < 10:
-            send_alert(f"{url} SSL expiring")
+            if ssl_days != -1 and ssl_days < 10:
+                send_alert(f"{url} SSL expiring")
 
-        if domain_days != -1 and domain_days < 10:
-            send_alert(f"{url} DOMAIN expiring")
+            if domain_days != -1 and domain_days < 10:
+                send_alert(f"{url} DOMAIN expiring")
 
-        # SAVE LOG
+        except Exception as e:
+            log(f"⚠️ Alert failed: {e}")
+
+        # ---------------- SAVE LOG ----------------
         send_log(site_id, {
             "status": result["status"],
             "response_time": result["response_time"],
@@ -77,43 +94,70 @@ DOMAIN: {domain_days} days
         })
 
     except Exception as e:
-        log(f"❌ Error: {e}")
+        log(f"❌ Error checking {url}: {e}")
 
     return result
 
 
+# -------------------------------
+# MAIN WORKER LOOP
+# -------------------------------
 def run():
     log("🚀 Worker started")
 
     while True:
+        start_time = time.time()
+
         try:
-            res = requests.get(API)
+            log("🔄 Fetching sites...")
+
+            res = requests.get(API, timeout=10)
             sites = res.json()
 
+            if not sites:
+                log("⚠️ No sites found")
+                time.sleep(CHECK_INTERVAL)
+                continue
+
+            log(f"✅ Found {len(sites)} sites")
+
+            # ---------------- PARALLEL CHECK ----------------
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                 futures = [executor.submit(process_site, s) for s in sites]
 
                 for f in as_completed(futures):
-                    r = f.result()
+                    result = f.result()
 
-                    requests.post(
-                        f"{API}/{r['site_id']}/status",
-                        json={
-                            "status": r["status"],
-                            "response_time_ms": r["response_time"],
-                            "ssl_days": r["ssl_days"],
-                            "domain_days": r["domain_days"]
-                        }
-                    )
+                    # ---------------- UPDATE STATUS ----------------
+                    try:
+                        requests.post(
+                            f"{API}/{result['site_id']}/status",
+                            json={
+                                "status": result["status"],
+                                "response_time_ms": result["response_time"],
+                                "ssl_days": result["ssl_days"],
+                                "domain_days": result["domain_days"]
+                            },
+                            timeout=5
+                        )
+                        log(f"✅ Updated: {result['url']}")
 
-                    log(f"✅ Updated: {r['url']}")
+                    except Exception as e:
+                        log(f"❌ Status update failed: {e}")
 
         except Exception as e:
             log(f"❌ Worker error: {e}")
 
-        log("😴 Sleeping...\n")
-        time.sleep(CHECK_INTERVAL)
+        # ---------------- SMART SLEEP ----------------
+        elapsed = time.time() - start_time
+        sleep_time = max(0, CHECK_INTERVAL - elapsed)
+
+        log(f"😴 Sleeping for {int(sleep_time)} seconds (~15 min)\n")
+        time.sleep(sleep_time)
 
 
+# -------------------------------
+# ENTRY POINT
+# -------------------------------
 if __name__ == "__main__":
     run()

@@ -4,12 +4,12 @@ const LOG_API = "/api/sites";
 let allSites = [];
 let currentFilter = "all";
 let searchQuery = "";
-
+console.log("APP LOADED", Date.now());
 async function fetchSites() {
     try {
         const res = await fetch(API);
         allSites = await res.json();
-
+        console.log("FETCH CALLED");
         applyFilterAndRender();
         updateStats(allSites);
     } catch (err) {
@@ -249,8 +249,8 @@ function escapeHtml(str) {
     }[m]));
 }
 
-// AUTO REFRESH (Every 15sec)
-setInterval(fetchSites, 15000);
+// AUTO REFRESH (Every 60sec)
+setInterval(fetchSites, 60000);
 
 // INITIAL LOAD
 fetchSites();
