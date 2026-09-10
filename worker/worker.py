@@ -63,12 +63,7 @@ def process_site(site):
         result["domain_days"] = domain_days
 
         # ---------------- LOG MESSAGE ----------------
-        log_message = f"""
-STATUS: {result['status']}
-RESPONSE: {result['response_time']} ms
-SSL: {ssl_days} days
-DOMAIN: {domain_days} days
-"""
+        log_message = f"Checked successfully in {result['response_time']} ms"
 
         # ---------------- ALERTS ----------------
         try:

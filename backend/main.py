@@ -73,12 +73,11 @@ async def add_log(site_id: int, request: Request):
     return {"message": "log saved"}
 
 
-# ✅ GET LOGS
 @app.get("/api/sites/{site_id}/logs")
 def get_logs(site_id: int):
     conn = get_connection()
     rows = conn.execute("""
-        SELECT message, created_at
+        SELECT status, response_time, ssl_days, domain_days, message, created_at
         FROM logs
         WHERE site_id = ?
         ORDER BY created_at DESC
