@@ -68,12 +68,12 @@ def delete_site(site_id):
     conn.close()
 
 
-def update_status(site_id, status, response_time, ssl_days, domain_days):
+def update_status(site_id, status, response_time, ssl_days, domain_days, hosting=None):
     conn = get_connection()
     conn.execute("""
         UPDATE websites
-        SET status=?, response_time_ms=?, ssl_days=?, domain_days=?, last_checked=datetime('now')
+        SET status=?, response_time_ms=?, ssl_days=?, domain_days=?, hosting=?, last_checked=datetime('now')
         WHERE id=?
-    """, (status, response_time, ssl_days, domain_days, site_id))
+    """, (status, response_time, ssl_days, domain_days, hosting, site_id))
     conn.commit()
     conn.close()

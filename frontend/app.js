@@ -105,6 +105,15 @@ function renderSites(sites) {
                 <span class="badge ${statusClass}">
                     ${site.status}
                 </span>
+                <button class="delete-btn" data-id="${site.id}" title="Delete site">
+    <svg viewBox="0 0 24 24">
+        <path d="M6 7h12M9 7V5h6v2M8 7l1 12h6l1-12"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              fill="none"/>
+    </svg>
+</button>
             </div>
 
             <div class="metrics">
@@ -120,13 +129,41 @@ function renderSites(sites) {
                     <span>Domain</span>
                     <strong>${site.domain_days ?? "-"} days</strong>
                 </div>
+                
             </div>
+            
 
-            <div class="meta">
-                <span>Last checked: ${site.last_checked ?? "Never"}</span>
+            <div class="meta-row">
+                <span class="meta-label">Hosting:</span>
+                <span class="meta-value" title="${site.hosting ?? "Unknown"}">
+                    ${site.hosting ?? "Unknown"}
+                </span>
+            </div>
             </div>
         `;
+        // ✅ DELETE BUTTON HANDLER
+        const deleteBtn = card.querySelector(".delete-btn");
 
+        if (deleteBtn) {
+            deleteBtn.addEventListener("click", async (e) => {
+                e.stopPropagation(); // ❗ prevents card click (logs modal)
+
+                const confirmDelete = confirm(
+                    "Are you sure you want to delete this site?",
+                );
+                if (!confirmDelete) return;
+
+                try {
+                    await fetch(`/api/sites/${site.id}`, {
+                        method: "DELETE",
+                    });
+
+                    fetchSites(); // refresh UI
+                } catch (err) {
+                    console.error("Delete failed:", err);
+                }
+            });
+        }
         // Click card -> Open dedicated Logs View / Modal
         card.addEventListener("click", (e) => {
             if (e.target.tagName === "A") return;
@@ -205,7 +242,17 @@ function closeLogs() {
         modal.classList.add("hidden");
     }
 }
+async function deleteSite(e, siteId, siteName) {
+    e.stopPropagation();
 
+    if (!confirm(`Delete ${siteName}?`)) return;
+
+    await fetch(`${API}/${siteId}`, {
+        method: "DELETE",
+    });
+
+    fetchSites();
+}
 // ADD SITE HANDLER
 async function handleAddSite(e) {
     if (e && e.preventDefault) e.preventDefault();
