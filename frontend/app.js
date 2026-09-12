@@ -123,13 +123,16 @@ function renderSites(sites) {
                 </div>
                 <div>
                     <span>SSL</span>
-                    <strong>${site.ssl_days ?? "-"} days</strong>
+                    <strong class="${getExpiryClass(site.ssl_days)}">${
+            formatExpiryText(site.ssl_days)
+        }</strong>
                 </div>
                 <div>
                     <span>Domain</span>
-                    <strong>${site.domain_days ?? "-"} days</strong>
+                    <strong class="${getExpiryClass(site.domain_days)}">${
+            formatExpiryText(site.domain_days)
+        }</strong>
                 </div>
-                
             </div>
             
 
@@ -141,6 +144,10 @@ function renderSites(sites) {
             </div>
             </div>
         `;
+        card.addEventListener("click", () => {
+            window.location.href = `/site.html?id=${site.id}`;
+        });
+
         // ✅ DELETE BUTTON HANDLER
         const deleteBtn = card.querySelector(".delete-btn");
 
@@ -285,6 +292,18 @@ async function handleAddSite(e) {
     fetchSites();
 }
 
+function getExpiryClass(days) {
+    if (days === null || days === undefined || days === -1) return "";
+    if (days < 30) return "metric-danger";
+    if (days < 60) return "metric-warning";
+    return "metric-safe";
+}
+
+function formatExpiryText(days) {
+    if (days === null || days === undefined || days === -1) return "-";
+    return `${days} days`;
+}
+
 function escapeHtml(str) {
     if (!str) return "";
     return str.replace(/[&<>"']/g, (m) => ({
@@ -294,6 +313,82 @@ function escapeHtml(str) {
         '"': "&quot;",
         "'": "&#39;",
     }[m]));
+}
+
+// REFRESH HOSTING HANDLERS
+async function handleRefreshHosting() {
+    const btn = document.getElementById("refreshHostingBtn");
+    if (!btn || btn.disabled) return;
+
+    updateHostingBtnState(true);
+    showToast("Hosting refresh started in background", "info");
+
+    try {
+        const response = await fetch("/api/recompute-hosting", {
+            method: "POST",
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server returned status ${response.status}`);
+        }
+
+        // Wait ~4 seconds for background hosting recompute task to process DB updates
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+
+        // Refresh UI with updated hosting info
+        await fetchSites();
+        showToast("Hosting updated successfully", "success");
+    } catch (err) {
+        console.error("Failed to recompute hosting:", err);
+        showToast("Failed to refresh hosting", "danger");
+    } finally {
+        updateHostingBtnState(false);
+    }
+}
+
+function updateHostingBtnState(isLoading) {
+    const btn = document.getElementById("refreshHostingBtn");
+    const icon = document.getElementById("refreshHostingIcon");
+    const text = document.getElementById("refreshHostingText");
+
+    if (!btn) return;
+
+    btn.disabled = isLoading;
+    if (isLoading) {
+        if (icon) icon.className = "spin-icon";
+        if (text) text.textContent = "Refreshing...";
+    } else {
+        if (icon) icon.className = "";
+        if (text) text.textContent = "Refresh Hosting";
+    }
+}
+
+function showToast(message, type = "info") {
+    const container = document.getElementById("toastContainer");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+
+    let icon = "ℹ️";
+    if (type === "success") icon = "✅";
+    if (type === "danger") icon = "❌";
+    if (type === "warning") icon = "⚠️";
+
+    toast.innerHTML = `<span>${icon}</span> <span>${
+        escapeHtml(message)
+    }</span>`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s ease";
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function forceRefresh() {
+    fetchSites();
 }
 
 // AUTO REFRESH (Every 60sec)
